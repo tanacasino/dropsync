@@ -17,6 +17,7 @@ object DropSyncBuild extends Build {
       // add other settings here
       libraryDependencies ++= Seq(
         "com.dropbox.core" % "dropbox-core-sdk" % "[1.7,1.8)",
+        "com.typesafe" % "config" % "1.2.1",
         "org.scalatest" % "scalatest_2.11" % "2.2.1" % "test"
       )
     )

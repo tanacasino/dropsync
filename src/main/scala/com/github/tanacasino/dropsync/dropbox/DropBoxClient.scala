@@ -1,8 +1,9 @@
 package com.github.tanacasino.dropsync.dropbox
 
+import java.io.{File, FileInputStream}
 import java.util.Locale
 
-import com.dropbox.core.{DbxClient, DbxEntry, DbxRequestConfig}
+import com.dropbox.core.{DbxWriteMode, DbxClient, DbxEntry, DbxRequestConfig}
 import com.github.tanacasino.dropsync.{Entry, EntryClient}
 
 import scala.collection.JavaConversions._
@@ -21,7 +22,22 @@ object DropBoxClient {
 
 }
 
+case class MakeDirResult(success: Boolean, skipped: Boolean)
+
 class DropBoxClient(val client: DbxClient) extends EntryClient {
+
+  def upload(localEntry: Entry, remotePath: String): Unit = {
+    val inputStream = new FileInputStream(new File(localEntry.absPath))
+    try {
+      client.uploadFile(remotePath + localEntry.stat.path, DbxWriteMode.force, localEntry.stat.size, inputStream)
+    } finally {
+      inputStream.close
+    }
+  }
+
+  def mkdir(path: String): Unit = {
+    client.createFolder(path)
+  }
 
   private def listFiles(basePath: String, entry: DbxEntry): Stream[Entry] = listFiles(basePath, entry.path)
 
