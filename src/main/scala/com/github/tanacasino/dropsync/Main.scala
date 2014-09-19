@@ -138,6 +138,7 @@ object Main {
     println(s"failure : ${failure.get}")
     val bytes = uploads.map(_.stat.size).foldLeft(0L)(_ + _)
     println(s"Uploaded total size : ${bytes / 1024 / 1024} MB")
+    sys.exit(0)
   }
 
 }
