@@ -2,7 +2,10 @@ package com.github.tanacasino.dropsync
 
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
+import com.dropbox.core.DbxException
+import com.dropbox.core.DbxException.{RetryLater, BadResponseCode}
 import com.github.tanacasino.dropsync.dropbox.DropBoxClient
 import com.github.tanacasino.dropsync.local.LocalFileSystemClient
 
@@ -16,12 +19,13 @@ object Main {
     """
       |Usage: java -jar dropsync.jar COMMAND [OPTIONS] [ARGS]
       |COMMAND
-      |    setup
       |    sync
-      |    find
-      |    find-delete
+      |    setup (TODO)
+      |    find (TODO)
+      |    find-delete (TODO)
     """.stripMargin
 
+  // TODO too long main code. too bad.
   def main(args: Array[String]): Unit = {
     val startTime = System.currentTimeMillis
     // TODO Use library for arguments parser
@@ -74,11 +78,17 @@ object Main {
     // TODO file and directory name based filter (aka $HOME/.dropsyncignore.conf)
     val (dirs, files) = diff.partition(_.isDir)
     dirs.foreach { dir =>
-      println(s"D : ${dir.absPath}, ${remotePath + dir.stat.path}")
+      println(s"D : l:${dir.absPath}, r:${remotePath + dir.stat.path}")
     }
-    files.foreach { file =>
-      println(s"F : ${file.absPath}, ${remotePath + file.stat.path}")
+    val (uploads, ignores) = files.partition(PathFilter.apply)
+    uploads.foreach { file =>
+      println(s"F : l:${file.absPath}, r:${remotePath + file.stat.path}, size:${file.stat.size}")
     }
+    println("Ignores : ")
+    ignores.foreach { ignore =>
+      println(s"I : ${ignore.absPath}, size:${ignore.stat.size}")
+    }
+    println("")
 
     // Make directories (serial execution)
     dirs.foreach { dir =>
@@ -90,34 +100,61 @@ object Main {
     val pool = Executors.newFixedThreadPool(10) // TODO Should be configurable
     implicit val context = ExecutionContext.fromExecutorService(pool)
 
-    val futures: Seq[Future[Entry]] = for (i <- 0 to files.size - 1) yield {
-      val file = files(i)
+    val success = new AtomicLong
+    val failure = new AtomicLong
+
+    val futures: Seq[Future[Entry]] = for (i <- 0 to uploads.size - 1) yield {
+      val upload = uploads(i)
       val f: Future[Entry] = Future {
         var start = System.currentTimeMillis
-        println(s"uploading $i: r:${remotePath + file.stat.path}, l:${file.absPath}, size:${file.stat.size}")
-        client.upload(file, remotePath)
-        println(s"uploaded  $i: r:${remotePath + file.stat.path}, l:${file.absPath}, size:${file.stat.size}, uploadTime:${(System.currentTimeMillis - start) / 1000}")
-        file
+        println(s"uploading $i: r:${remotePath + upload.stat.path}, l:${upload.absPath}, size:${upload.stat.size}")
+        client.upload(upload, remotePath)
+        println(s"uploaded  $i: r:${remotePath + upload.stat.path}, l:${upload.absPath}, size:${upload.stat.size}, uploadTime:${(System.currentTimeMillis - start) / 1000}")
+        upload
       }
       f.onSuccess {
-        case entry: Entry => println(s"$i : onSuccess : $file")
+        case entry: Entry =>
+          println(s"$i : onSuccess : $upload")
+          success.incrementAndGet()
       }
       f.onFailure {
-        case t: Throwable => println(s"$i : onFailure : $file ,${t.getMessage}")
+        case retry: RetryLater =>
+          println(s"$i : onFailure : RetryLater : file:$upload, msg:${retry.getMessage}")
+          failure.incrementAndGet()
+        case bad: BadResponseCode =>
+          println(s"$i : onFailure : BadResponseCode : file:$upload, msg:${bad.getMessage}, code:${bad.statusCode}")
+          failure.incrementAndGet()
+        case t: Throwable =>
+          println(s"$i : onFailure : file:$upload, msg:${t.getMessage}")
+          failure.incrementAndGet()
       }
       f
     }
-    val result = Await.ready(Future.sequence(futures), Duration.Inf)
+    Await.ready(Future.sequence(futures), Duration.Inf)
+    context.shutdown
+
     println(s"Completed total: ${(System.currentTimeMillis - startTime) / 1000} sec")
-    result.foreach { r =>
-      println(s"success : ${r.size}")
-      println(s"failure : ${files.size - r.size}")
-    }
-    val bytes = files.map(_.stat.size).reduceLeft(_ + _)
-    println(s"Total Mega Bytes : ${bytes / 1024 / 1024}")
-    sys.exit(0)
+    println(s"success : ${success.get}")
+    println(s"failure : ${failure.get}")
+    val bytes = uploads.map(_.stat.size).foldLeft(0L)(_ + _)
+    println(s"Uploaded total size : ${bytes / 1024 / 1024} MB")
   }
 
-  case class UploadResult(success: Boolean)
+}
+
+
+// TODO more configurable
+object PathFilter {
+
+  // TODO application.conf default values
+  val IgnorePaths = List(".DS_Store", "Thumbs.db", ".dropbox")
+  val IgnorePrefix = List("._")
+
+  def apply(entry: Entry): Boolean = apply(entry.stat.path)
+
+  def apply(path: String): Boolean = {
+    val f = new File(path)
+    !(IgnorePaths.exists(_ == f.getName) || IgnorePrefix.exists(f.getName.startsWith(_)))
+  }
 
 }
