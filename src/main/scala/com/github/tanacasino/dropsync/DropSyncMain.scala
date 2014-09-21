@@ -14,7 +14,7 @@ import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 
 
-object Main {
+object DropSyncMain {
   val Usage =
     """
       |Usage: java -jar dropsync.jar COMMAND [OPTIONS] [ARGS]
@@ -80,7 +80,11 @@ object Main {
     dirs.foreach { dir =>
       println(s"D : l:${dir.absPath}, r:${remotePath + dir.stat.path}")
     }
-    val (uploads, ignores) = files.partition(PathFilter.apply)
+
+    val filter = Filter.defaultHandler
+    val (ignores, uploads) = files.partition { f =>
+      filter.skip(f.stat.path)
+    }
     uploads.foreach { file =>
       println(s"F : l:${file.absPath}, r:${remotePath + file.stat.path}, size:${file.stat.size}")
     }
@@ -118,12 +122,6 @@ object Main {
           success.incrementAndGet()
       }
       f.onFailure {
-        case retry: RetryLater =>
-          println(s"$i : onFailure : RetryLater : file:$upload, msg:${retry.getMessage}")
-          failure.incrementAndGet()
-        case bad: BadResponseCode =>
-          println(s"$i : onFailure : BadResponseCode : file:$upload, msg:${bad.getMessage}, code:${bad.statusCode}")
-          failure.incrementAndGet()
         case t: Throwable =>
           println(s"$i : onFailure : file:$upload, msg:${t.getMessage}")
           failure.incrementAndGet()
@@ -131,31 +129,13 @@ object Main {
       f
     }
     Await.ready(Future.sequence(futures), Duration.Inf)
-    context.shutdown
+    context.shutdownNow()
 
     println(s"Completed total: ${(System.currentTimeMillis - startTime) / 1000} sec")
     println(s"success : ${success.get}")
     println(s"failure : ${failure.get}")
     val bytes = uploads.map(_.stat.size).foldLeft(0L)(_ + _)
     println(s"Uploaded total size : ${bytes / 1024 / 1024} MB")
-    sys.exit(0)
-  }
-
-}
-
-
-// TODO more configurable
-object PathFilter {
-
-  // TODO application.conf default values
-  val IgnorePaths = List(".DS_Store", "Thumbs.db", ".dropbox")
-  val IgnorePrefix = List("._")
-
-  def apply(entry: Entry): Boolean = apply(entry.stat.path)
-
-  def apply(path: String): Boolean = {
-    val f = new File(path)
-    !(IgnorePaths.exists(_ == f.getName) || IgnorePrefix.exists(f.getName.startsWith(_)))
   }
 
 }
