@@ -19,7 +19,6 @@ object Entry {
   def apply(basePath: String, file: File): Entry = {
     Entry(basePath, file.getAbsolutePath, file.isFile, EntryStat(basePath, file))
   }
-
 }
 
 object EntryStat {
