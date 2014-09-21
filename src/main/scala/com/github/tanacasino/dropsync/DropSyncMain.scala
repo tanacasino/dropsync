@@ -4,13 +4,10 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
-import com.dropbox.core.DbxException
-import com.dropbox.core.DbxException.{RetryLater, BadResponseCode}
 import com.github.tanacasino.dropsync.dropbox.DropBoxClient
 import com.github.tanacasino.dropsync.local.LocalFileSystemClient
 
 import scala.concurrent.duration.Duration
-
 import scala.concurrent.{Await, ExecutionContext, Future}
 
 
@@ -128,14 +125,16 @@ object DropSyncMain {
       }
       f
     }
+
     Await.ready(Future.sequence(futures), Duration.Inf)
-    context.shutdownNow()
+    context.shutdown
 
     println(s"Completed total: ${(System.currentTimeMillis - startTime) / 1000} sec")
     println(s"success : ${success.get}")
     println(s"failure : ${failure.get}")
     val bytes = uploads.map(_.stat.size).foldLeft(0L)(_ + _)
     println(s"Uploaded total size : ${bytes / 1024 / 1024} MB")
+    sys.exit(1)
   }
 
 }
