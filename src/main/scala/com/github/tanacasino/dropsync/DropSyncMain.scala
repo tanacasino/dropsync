@@ -5,12 +5,11 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
 
 import com.github.tanacasino.dropsync.dropbox.DropBoxClient
-import com.github.tanacasino.dropsync.local.LocalFileSystemClient
 
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, ExecutionContext, Future}
 
-
+// TODO Too long main code. too bad. Need refactoring.
 object DropSyncMain {
   val Usage =
     """

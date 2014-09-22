@@ -3,8 +3,8 @@ package com.github.tanacasino.dropsync.dropbox
 import java.io.{File, FileInputStream}
 import java.util.Locale
 
-import com.dropbox.core.{DbxWriteMode, DbxClient, DbxEntry, DbxRequestConfig}
-import com.github.tanacasino.dropsync.{Entry, EntryClient}
+import com.dropbox.core.{DbxClient, DbxEntry, DbxRequestConfig, DbxWriteMode}
+import com.github.tanacasino.dropsync.{Entry, RemoteEntryClient}
 
 import scala.collection.JavaConversions._
 
@@ -22,11 +22,9 @@ object DropBoxClient {
 
 }
 
-case class MakeDirResult(success: Boolean, skipped: Boolean)
+class DropBoxClient(val client: DbxClient) extends RemoteEntryClient {
 
-class DropBoxClient(val client: DbxClient) extends EntryClient {
-
-  def upload(localEntry: Entry, remotePath: String): Unit = {
+  override def upload(localEntry: Entry, remotePath: String): Unit = {
     val inputStream = new FileInputStream(new File(localEntry.absPath))
     try {
       client.uploadFile(remotePath + localEntry.stat.path, DbxWriteMode.force, localEntry.stat.size, inputStream)
@@ -35,19 +33,19 @@ class DropBoxClient(val client: DbxClient) extends EntryClient {
     }
   }
 
-  def mkdir(path: String): Unit = {
+  override def mkdir(path: String): Unit = {
     client.createFolder(path)
   }
 
   private def listFiles(basePath: String, entry: DbxEntry): Stream[Entry] = listFiles(basePath, entry.path)
 
-  def listFiles(basePath: String, path: String): Stream[Entry] = {
+  override def listFiles(basePath: String, path: String): Stream[Entry] = {
     client.getMetadataWithChildren(path) match {
       case null => Stream.empty
       case meta if meta.entry.isFile => Entry(basePath, meta.entry) #:: Stream.empty
       case meta =>
         val (dirs, files) = Option(meta.children).toStream.flatten.partition(_.isFolder)
-        if(meta.entry.path == basePath)
+        if (meta.entry.path == basePath)
           files.map(Entry.apply(basePath, _)) #::: dirs.flatMap(listFiles(basePath, _))
         else
           Entry(basePath, meta.entry) #:: files.map(Entry.apply(basePath, _)) #::: dirs.flatMap(listFiles(basePath, _))
