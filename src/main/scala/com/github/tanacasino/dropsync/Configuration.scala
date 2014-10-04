@@ -10,14 +10,10 @@ object Configuration {
 
   val ConfigFileName = ".dropsync.conf"
 
-  def load(): Option[Config] = {
+  def load(): Config = {
     val baseDir = Properties.envOrElse("HOME", "")
     val file = new File(baseDir + File.separator + ConfigFileName)
-    if (file.isFile) {
-      Option(ConfigFactory.parseFile(file))
-    } else {
-      None
-    }
+    return ConfigFactory.parseFile(file)
   }
 
 }
